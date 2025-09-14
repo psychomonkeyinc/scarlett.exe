@@ -1,0 +1,211 @@
+SCARLETT SANDBOX CONTEXT DOCUMENT
+Version: initial draft (pure NumPy / non-transformer / no LLM / no safety layers yet)
+
+--------------------------------------------------
+PURPOSE
+--------------------------------------------------
+Provide a portable, self-contained snapshot of the current Scarlett architectural intent so it can be discussed in another GPT session without needing the repo. Focus: cognitive orchestration sandbox (internal reasoning structures) WITHOUT: safety, policy, moral layers, external action integration, or large pretrained language/vision models.
+
+--------------------------------------------------
+CORE PRINCIPLES (CURRENT PHASE)
+--------------------------------------------------
+1. Forward-only sandbox: deterministic shape-stable pipeline.
+2. Pure NumPy: no PyTorch / no autograd / no transformer attention mechanisms.
+3. Non-LLM: no tokenization, no generative language modeling; language directory is placeholder only.
+4. Modular isolation: each conceptual subsystem returns embeddings + meta; no implicit global state.
+5. No safety/policy layers yet (intentionally deferred for whitepaper validation later).
+6. Tiny dimensions for iteration; performance secondary to clarity.
+7. Recurrent / iterative components allowed (GRU-style, message passing) but shallow.
+8. Reproducibility: single RNG seed drives all stochastic ops.
+
+--------------------------------------------------
+DIRECTORY / MODULE MAP
+--------------------------------------------------
+core/       types.py (future dataclasses), config.py (configuration surface)
+route/      router.py (dispatch), gate.py (expert gating), orchestrator.py (end-to-end coordination)
+intent/     intent.py (intent draft synthesis), desire.py (desire feature encoders & conflict weighting), agency.py (drive/activation), goals.py (hierarchical goal registry)
+sim/        theory.py (theory of mind), outcome.py (state/engagement rollout), emotion.py (emotion impact), relation.py (relationship trajectory)
+perception/ audio.py (audio embedding), vision.py (visual embedding), fuse.py (multimodal fusion)
+language/   llm.py embed.py semantic.py (placeholders; dormant this phase)
+decision/   synth.py (decision synthesizer), actions.py (action space definition)
+mind/       metmind.py (meta-cognitive summary), dream.py (offline scenario generation)
+diag/       monitor.py (metrics hooks), drift.py (embedding drift), gen.py (synthetic probe/test generation)
+run.py      planned sandbox driver
+context.txt this document
+README.md   scaffold overview
+
+LEGACY/NOTE: A legacy file named 'global_router' (underscore) exists but new naming avoids underscores.
+
+--------------------------------------------------
+DATA FLOW (ONE TICK)
+--------------------------------------------------
+raw_audio, raw_frame
+  -> perception.audio      -> audio_emb (128)
+  -> perception.vision     -> vision_emb (128)
+  -> perception.fuse       -> fused_emb (128)
+  -> intent.desire         -> desire_matrix (Dn,64), intent_base (128)
+  -> intent.agency (+ prev agency_h) -> agency_vec (128), new_h (128), activation (scalar)
+  -> intent.goals (goal set)         -> goal influence (integrated into intent_base upstream or added vector)
+  -> sim.theory            -> ToM_vec (128)
+  -> sim.outcome           -> next_state (128), engage_score (scalar)
+  -> sim.emotion           -> emotion_logits (E), emotion_emb (128)
+  -> sim.relation (+ prev_rel) -> relation_vec (128), relation_delta (scalar)
+  -> mind.metmind (optional) -> meta signals (confidence, novelty, stability) & meta_emb (128)
+  -> Expert set: [intent_base, agency_vec, ToM_vec, next_state, emotion_emb, relation_vec, (optional meta_emb)]
+  -> route.gate            -> weights (N_exp), combined_state (128)
+  -> decision.synth        -> action_logits (A), relevance (N_exp) (optional)
+  -> diag modules update drift/anomaly stats
+
+Persisted state across ticks: agency hidden (128), relation_vec (128), optional metmind rolling stats, RNG.
+
+--------------------------------------------------
+CANONICAL DIMENSIONS (SANDBOX DEFAULTS)
+--------------------------------------------------
+Embedding dim (D):          128
+Desire count (Dn):          8–12
+Emotion classes (E):        ~10
+Action count (A):           5–10
+ToM actors (M):             <=5
+Outcome rollout steps (T):  3 (simplified)
+Meta signals (scalars):     confidence, novelty, stability (extendable)
+
+--------------------------------------------------
+INTERFACE SIGNATURE SKETCH (NUMPY ARRAYS)
+--------------------------------------------------
+All arrays float32 unless scalar.
+
+audio.forward(raw_audio: (T_audio,)) -> (128,)
+vision.forward(frame: (H,W,C)) -> (128,)
+fuse.forward(audio_emb: (128,), vision_emb: (128,)) -> fused_emb: (128,)
+
+desire.forward(fused_emb: (128,)) -> (desire_matrix: (Dn,64), intent_base: (128,))
+goals.select(active_goals: list[Goal]) -> subset
+goals.integrate(goals, fused_emb) -> goal_vector (128) (may add or blend into intent_base)
+agency.forward(fused_emb: (128,), intent_base: (128,), h_prev: (128,)) -> agency_vec: (128,), h_new: (128,), activation: ()
+
+theory.forward(fused_emb: (128,), actor_feats: (M,Feat)) -> ToM_vec: (128,)
+outcome.forward(intent_base, agency_vec, ToM_vec) -> next_state: (128,), engage_score: ()
+emotion.forward(ToM_vec, next_state, agency_vec) -> emotion_logits: (E,), emotion_emb: (128,)
+relation.forward(ToM_vec, next_state, prev_relation: (128,)) -> relation_vec: (128,), relation_delta: ()
+metmind.summarize(state_bundle) -> {metric: float}
+metmind.embed(state_bundle) -> meta_emb: (128,)
+
+gate.compute(experts: list[(128,)]) -> weights: (N_exp,), combined: (128,)
+synth.forward(combined: (128,), experts: list[(128,)]) -> action_logits: (A,), relevance: (N_exp,)
+
+diag.drift.update(fused_emb, decision_state) -> drift_score: ()
+
+Goal structure (conceptual): id:str, level:{long,mid,immediate}, embedding:(128,), priority:float, progress:float
+
+--------------------------------------------------
+NUMPY BUILDING BLOCKS (PLANNED)
+--------------------------------------------------
+Linear: y = x @ W + b  (W shape [in_dim, out_dim])
+MLP: Linear -> GELU -> Linear (+ optional LayerNorm)
+GRU cell: manual gates (update/reset) with tanh candidate
+Conv1d (audio): im2col or stride slicing then matmul
+Conv2d (vision): small depth, residual path optional
+Message passing (theory): node update = act(W_self*h + mean(W_nei*neighbors))
+Gating: weights = softmax(MLP(mean_stack(expert_matrix)))
+
+Activations: GELU approx, sigmoid, tanh, ReLU; softmax stabilized (x - max).
+
+--------------------------------------------------
+METMIND ROLE (FUTURE PHASE WITHIN SANDBOX)
+--------------------------------------------------
+Aggregates cross-module errors / variances:
+- prediction_error = ||pred_next_state - actual_state|| (later when loops exist)
+- desire_variance = var(desire_weights)
+- engagement_trend = EMA(engage_score)
+Generates meta signals influencing gate temperature or exploration.
+
+--------------------------------------------------
+DREAM MODULE (OFFLINE ROLLOUTS)
+--------------------------------------------------
+generate(seed_state, n_episodes, horizon) -> list of Episode dicts
+Episode fields: states[horizon,128], actions[horizon,A], emotion_logits[horizon,E], meta{}
+Initial generator: latent random walk with norm clamp.
+Potential use: augment sim training or stress gating.
+
+--------------------------------------------------
+GRADIENT / NVME OFFLOAD STRATEGY (FOR LATER TRAINING)
+--------------------------------------------------
+Flat parameter array in RAM, gradient shards as numpy.memmap on NVMe.
+Accumulate microbatch grads in RAM buffers -> flush to memmap when threshold reached.
+Quantize (optional) to fp16/int8 per shard with scale.
+Round-robin optimizer steps per shard to smooth I/O.
+
+--------------------------------------------------
+MILESTONE ROADMAP
+--------------------------------------------------
+Milestone 0 (Spec Integrity):
+- Finalize core.types dataclasses (no implementation yet)
+- Confirm interface shapes; write static shape assertions stub
+- Provide orchestrator plan (sequence ordering + state passing)
+
+Milestone 1 (Forward Sandbox):
+- Implement minimal NumPy modules with random-initialized params
+- Deterministic forward pass from synthetic inputs -> action_logits
+- Log intermediate shapes + timing
+
+Milestone 2 (Stateful Loop):
+- Add recurrent tick loop (agency hidden, relation embedding persistence)
+- Insert metmind summarize stub producing scalar metrics
+- Add drift tracking
+
+Milestone 3 (Dream & Gating Refinement):
+- Implement dream latent random episodes feeding gating stress tests
+- Introduce gating entropy regularization
+
+Milestone 4 (Manual Training Prototype):
+- Manual backward for Linear/MLP/action head
+- Train action logits on synthetic labels; leave rest static
+
+Milestone 5 (Extended Evaluators):
+- Implement outcome rollouts (T>1) + relation progression
+- Collect meta metrics for metmind modulation
+
+Deferred Post-Sandbox: safety layers, moral evaluators, external tool/IO integration, LLM fusion, transformer upgrades, policy engine.
+
+--------------------------------------------------
+OPEN DECISIONS / QUESTIONS
+--------------------------------------------------
+1. Final embedding dim (128 or adjust?)
+2. Are goals integrated additively or via gating modulation?
+3. Include metmind embedding as separate expert or merge into combined_state?
+4. Dream generation frequency vs online ticks?
+5. Action space semantics (currently abstract integers) -> future taxonomy.
+6. Parameter persistence format (single .npz vs flat binary + manifest).
+7. Will manual training occur inside sandbox or external script first?
+
+--------------------------------------------------
+RISKS / CAVEATS (CURRENT DESIGN)
+--------------------------------------------------
+- Without safety/policy constraints outputs are unconstrained semantics.
+- Manual gradient code is error-prone; correctness tests required before scaling.
+- Message passing naive mean aggregation may underfit complex ToM correlations.
+- Dream random walk may not produce meaningful curriculum without constraints.
+
+--------------------------------------------------
+FUTURE EXTENSIONS (OUTSIDE CURRENT SCOPE)
+--------------------------------------------------
+- Replace CNN + message passing with transformer or state-space layers.
+- Introduce sparse MoE gating.
+- Add memory store (episodic / semantic) with retrieval queries.
+- Multi-agent negotiation loop (turn-based latent exchanges).
+- Safety & alignment: moral evaluators, policy filters, audit logs, capability scoping.
+
+--------------------------------------------------
+GLOSSARY
+--------------------------------------------------
+Embedding: Fixed-length numeric representation (float32[128]).
+Expert: Any module output contributing to decision synthesis (intent_base etc.).
+Gating: Soft weighting over expert embeddings producing combined_state.
+ToM (Theory of Mind): Internal estimate of other actors' latent mental states.
+Metmind: Meta-layer summarizing internal performance/consistency signals.
+Dream: Offline synthetic generation producing hypothetical state-action trajectories.
+Drift: Shift in embedding distribution over time relative to EMA baseline.
+
+--------------------------------------------------
+END OF DOCUMENT
+--------------------------------------------------

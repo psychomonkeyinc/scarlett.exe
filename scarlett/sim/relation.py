@@ -1,0 +1,1 @@
+"""Relationship trajectory projection placeholder."""
