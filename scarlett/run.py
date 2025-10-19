@@ -1,4 +1,4 @@
-"""Entry point placeholder for manual sandbox runs.
+"""Entry point placeholder for manual
 
-Future: simple orchestration script to wire perception -> intent -> sim -> decision.
-"""
+
+
