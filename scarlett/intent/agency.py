@@ -177,7 +177,7 @@ class AgencySimulationModule(nn.Module):
         
     def forward(
         self,
-        internal_state: torch.Tensor,  # [batch, hidden_dim]
+        internal_state: torch.Tensor,  # [batch, emotion_dim or hidden_dim]
         context: torch.Tensor,  # [batch, hidden_dim]
     ) -> Dict[str, torch.Tensor]:
         """
@@ -190,8 +190,15 @@ class AgencySimulationModule(nn.Module):
         Returns:
             Dictionary with agency metrics
         """
+        # Project internal state to hidden_dim if needed
+        if internal_state.shape[-1] != self.hidden_dim:
+            proj = nn.Linear(internal_state.shape[-1], self.hidden_dim).to(internal_state.device)
+            internal_proj = proj(internal_state)
+        else:
+            internal_proj = internal_state
+        
         # Encode internal state
-        encoded_state = self.state_encoder(internal_state)
+        encoded_state = self.state_encoder(internal_proj)
         
         # Compute readiness
         readiness = self.readiness_network(encoded_state)

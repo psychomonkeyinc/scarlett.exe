@@ -120,7 +120,7 @@ class DesireConflictEngine(nn.Module):
     def forward(
         self,
         context: torch.Tensor,  # [batch, hidden_dim]
-        internal_state: Optional[torch.Tensor] = None,  # [batch, hidden_dim]
+        internal_state: Optional[torch.Tensor] = None,  # [batch, emotion_dim or hidden_dim]
     ) -> Dict[str, torch.Tensor]:
         """
         Process and resolve desire conflicts.
@@ -137,7 +137,13 @@ class DesireConflictEngine(nn.Module):
         
         # Compute desire weights based on context and internal state
         if internal_state is not None:
-            combined_context = (context + internal_state) / 2
+            # Project internal state to match context dimension if needed
+            if internal_state.shape[-1] != context.shape[-1]:
+                proj = nn.Linear(internal_state.shape[-1], context.shape[-1]).to(context.device)
+                internal_proj = proj(internal_state)
+            else:
+                internal_proj = internal_state
+            combined_context = (context + internal_proj) / 2
         else:
             combined_context = context
         

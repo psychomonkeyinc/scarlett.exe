@@ -53,6 +53,17 @@ class IntentDraftGenerator(nn.Module):
         internal_state: torch.Tensor
     ) -> Dict[str, torch.Tensor]:
         """Generate intent draft."""
+        # Ensure all inputs are the same dimension
+        target_dim = self.combiner[0].in_features // 3  # Expected dimension per input
+        
+        # Project inputs if needed
+        if perception.shape[-1] != target_dim:
+            perception = nn.Linear(perception.shape[-1], target_dim).to(perception.device)(perception)
+        if goals.shape[-1] != target_dim:
+            goals = nn.Linear(goals.shape[-1], target_dim).to(goals.device)(goals)
+        if internal_state.shape[-1] != target_dim:
+            internal_state = nn.Linear(internal_state.shape[-1], target_dim).to(internal_state.device)(internal_state)
+        
         combined = torch.cat([perception, goals, internal_state], dim=-1)
         fused = self.combiner(combined)
         
